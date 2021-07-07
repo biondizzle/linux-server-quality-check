@@ -2,6 +2,8 @@
 
 # get_OS ...  Returns a predictable string value of the operating system name
 get_OS() {
+	# Setup return array
+	local -n RETURN_OS=$1
 	OSFull=$(hostnamectl | grep "Operating System")
 	OS="UNKNOWN"
 
@@ -41,35 +43,61 @@ get_OS() {
 		OS="UBUNTU"
 	fi
 
-	echo $OS
+	RETURN_OS=("$OS" "$OSFull")
 }
 
 # installer_alpine ...
 installer_alpine() {
-	echo "ALPINE"
+	# Setup return array
+	local -n RETURN_ALPINE=$1
+	#RETURN_ALPINE=(0 "SUCCESS!")
+	#RETURN_ALPINE=(1 "FAIL!")
+	#return 1
 }
 
 # installer_arch ...
 installer_arch() {
-	echo "ARCH"
+	# Setup return array
+	local -n RETURN_ARCH=$1
+	#RETURN_ARCH=(0 "SUCCESS!")
+	#RETURN_ARCH=(1 "FAIL!")
+	#return 1
 }
 
 # installer_debian ...
 installer_debian() {
-	echo "DEBIAN"
-	#sudo apt install clamav
-	#apt install -y clamav-daemon
-	#sudo reboot
+	# Setup return array
+	local -n RETURN_DEBIAN=$1
+
+	# Install clamav
+	DEBIAN_FRONTEND=noninteractive apt -y --allow install clamav clamav-daemon
+	if [ $? -gt 0 ]; then
+		RETURN_DEBIAN=(1 "Failed Installing Clamav")
+		return 1
+	fi
+
+	#RETURN_DEBIAN=(1 "FAIL!")
+	RETURN_DEBIAN=(0 "SUCCESS!")
+	return 0
 }
 
 # installer_gentoo ...
 installer_gentoo() {
-	echo "GENTOO"
+	# Setup return array
+	local -n RETURN_GENTOO=$1
+	#RETURN_GENTOO=(0 "SUCCESS!")
+	#RETURN_GENTOO=(1 "FAIL!")
+	#return 1
 }
 
 # installer_red_hat ...
 installer_red_hat() {
-	echo "RED HAT"
+	# Setup return array
+	local -n RETURN_RED_HAT=$1
+	#RETURN_RED_HAT=(0 "SUCCESS!")
+	#RETURN_RED_HAT=(1 "FAIL!")
+	#return 1
+
 	# install on centos
 	#sudo yum -y install epel-release
 	#sudo yum clean all
@@ -79,42 +107,60 @@ installer_red_hat() {
 
 # run_installer ... figures out which installer to run based on the OS and runs it
 run_installer() {
-	# store the OS name
-	OS=get_OS
+	# To get array returns
+	local RETURN_OPERATING_SYSTEM
+	local RETURN_INSTALLER
 
-	case $OS in
+	# GET OS
+	get_OS RETURN_OPERATING_SYSTEM
+	declare -a RETURN_OPERATING_SYSTEM
+
+	# Output some info
+	echo "Operating System Constant: ${RETURN_OPERATING_SYSTEM[0]}"
+	echo "Operating System Full: ${RETURN_OPERATING_SYSTEM[1]}"
+
+	# Run the correct installer
+	case ${RETURN_OPERATING_SYSTEM[0]} in
 
 		# ALPINE - apk
 		"ALPINE")
-			installer_alpine
+			installer_alpine RETURN_INSTALLER
 		;;
 
-		# ARCH - apk
+		# ARCH - pacman
 		"ARCH")
-			installer_arch
+			installer_arch RETURN_INSTALLER
 		;;
 
-		# DEBIAN DISTROS - apk
+		# DEBIAN DISTROS - apt
 		"DEBIAN" | "UBUNTU")
-			installer_debian
+			installer_debian RETURN_INSTALLER
 		;;
 
-		# GENTOO - apk
+		# GENTOO - portage
 		"GENTOO")
-			installer_gentoo
+			installer_gentoo RETURN_INSTALLER
 		;;
 
 		# RED HAT DISTROS - yum
 		"ALMA" | "CENTOS" | "FEDORA" | "ROCKY")
-			installer_red_hat
+			installer_red_hat RETURN_INSTALLER
 		;;
 
 		*)
-			echo -n "Unknown Distro"
-			exit 1
+			RETURN_INSTALLER=(1, "Unknown Operating System")
 		;;
 
 	esac
+
+	# Parse as array and handle
+	declare -a RETURN_INSTALLER
+	echo ${RETURN_INSTALLER[1]}
+	exit ${RETURN_INSTALLER[0]}
+}
+
+# run_clamav_scan ...
+run_clamav_scan() {
 
 }
 
@@ -122,7 +168,7 @@ run_installer() {
 run_installer
 
 # Run scanner
-clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell /
+#clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell /
 
 # updates virus database
 #sudo freshclam # DONT NEED BECAUSE IT RUNS A SERVICE THAT AUTO UPDTES IT
