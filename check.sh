@@ -70,14 +70,17 @@ installer_debian() {
 	local -n RETURN_DEBIAN=$1
 
 	# Install clamav
-	DEBIAN_FRONTEND=noninteractive apt -y --allow install clamav clamav-daemon
+	export DEBIAN_FRONTEND=noninteractive
+	yes | apt-get -y --allow-downgrades --allow-remove-essential --allow-change-held-packages install clamav clamav-daemon
+
+	# Install failes
 	if [ $? -gt 0 ]; then
 		RETURN_DEBIAN=(1 "Failed Installing Clamav")
 		return 1
 	fi
 
 	#RETURN_DEBIAN=(1 "FAIL!")
-	RETURN_DEBIAN=(0 "SUCCESS!")
+	RETURN_DEBIAN=(0 "Successfully Installed Packages")
 	return 0
 }
 
@@ -120,6 +123,7 @@ run_installer() {
 	echo "Operating System Full: ${RETURN_OPERATING_SYSTEM[1]}"
 
 	# Run the correct installer
+	echo "Installing Required Packages"
 	case ${RETURN_OPERATING_SYSTEM[0]} in
 
 		# ALPINE - apk
@@ -161,7 +165,8 @@ run_installer() {
 
 # run_clamav_scan ...
 run_clamav_scan() {
-
+	touch results.txt
+	clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell / >> results.txt
 }
 
 # Install clamav
