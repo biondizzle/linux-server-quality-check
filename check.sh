@@ -165,8 +165,26 @@ run_installer() {
 
 # run_clamav_scan ...
 run_clamav_scan() {
-	touch results.txt
-	clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell / >> results.txt
+	# File we'll store the results in
+	RESULTS_FILE="results.txt"
+
+	# Results file exists, delete it
+	if test -f "$RESULTS_FILE"; then
+		rm "$RESULTS_FILE"
+	fi
+
+	# Create results file
+	touch "$RESULTS_FILE"
+
+	# Run the scan outputting the results to the results file
+	clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell / >> "$RESULTS_FILE"
+}
+
+check_clam_av_infected_files() {
+	# `BEGIN{FS=":"}`                   # Use the colon as a field separator
+	# `tolower($1) == "infected files"` # convert field 1 to lowercase, then look for a field called "infected files"
+	# `{print $2;}`                     # print the second field
+	awk 'BEGIN{FS=":"} tolower($1) == "infected files" {print $2;}' results.txt
 }
 
 # Install clamav
