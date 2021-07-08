@@ -197,13 +197,36 @@ run_check_clam_av_scan_results() {
 	# Setup return array
 	local -n RETURN_CLAMAV_RESULTS_CHECK=$1
 
-	# Makesure we even have a results file
+	# Does a results file exist?
 	RESULTS_FILE_EXISTS=$(file_exists $CLAMAV_RESULTS_FILE)
+
+	# We do not have a results file, we cant parse anything
 	if [[ $RESULTS_FILE_EXISTS == "false" ]]; then
 		RETURN_CLAMAV_RESULTS_CHECK=(1 "There is no clamav scan results file. Please run the clamav scan using ./check.sh --clamav-scan")
 		return 0
 	fi
 
+	# we have a file, lets see if screen is still running
+	POTENTIAL_CLAMAV_SCREEN=$(screen -ls | awk 'BEGIN{FS="\t"} /'$CLAMAV_SCREEN_NAME'/ {print $2;}')
+
+	# Screen exists meaning clamav is still running, we cant really check yet
+	if [[ $POTENTIAL_CLAMAV_SCREEN == *"$CLAMAV_SCREEN_NAME"* ]]; then
+		# We're gonna return 2 here because this isnt exactly a fail, just needs more time
+		RETURN_CLAMAV_RESULTS_CHECK=(2 "Clamav is still running. Screen process is still available. Try again later")
+		return 0
+	fi
+
+	# Get the content of the results file
+	RESULTS_FILE_CONTENT=$(cat "$CLAMAV_RESULTS_FILE")
+	# Strip all spaces
+	RESULTS_FILE_CONTENT_NO_SPACES=${RESULTS_FILE_CONTENT//[[:space:]]/}
+
+	# Results file is empty
+	if [[ $RESULTS_FILE_CONTENT_NO_SPACES == "" ]]; then
+		# We're gonna return 2 here because this isnt exactly a fail, just needs more time
+		RETURN_CLAMAV_RESULTS_CHECK=(2 "Clamav is still running. Results file is empty. Try again later")
+		return 0
+	fi
 
 	### -- PARSE INFECTED FILES FROM SCAN RESULTS -- ###
 	# `BEGIN{FS=":"}`                   # Use the colon as a field separator
