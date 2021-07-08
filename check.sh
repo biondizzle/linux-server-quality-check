@@ -1,17 +1,25 @@
 #!/bin/bash
 
 #GLOABLS
-export WHAT_ARE_WE_CALLING_THIS="Linux Server Quality Checker"
-# SCREEN NAMES
-export CLAMAV_SCREEN_NAME="clam_av_scanner"
-# RESULTS FILES
-export CLAMAV_RESULTS_FILE="clam_av_results.txt"
+WHAT_ARE_WE_CALLING_THIS="Linux Server Quality Checker"
+CLAMAV_SCREEN_NAME="clam_av_scanner"
+CLAMAV_RESULTS_FILE="clam_av_results.txt"
 
+file_exists() {
+	# Results file exists, delete it
+	if test -f "$1"; then
+		echo "true"
+	else
+		echo "false"
+	fi
+}
 
 # get_OS ...  Returns a predictable string value of the operating system name
 get_OS() {
 	# Setup return array
 	local -n RETURN_OS=$1
+
+	# Get OS from hostnamectl
 	OSFull=$(hostnamectl | grep "Operating System")
 	OS="UNKNOWN"
 
@@ -67,9 +75,9 @@ installer_alpine() {
 installer_arch() {
 	# Setup return array
 	local -n RETURN_ARCH=$1
-	#RETURN_ARCH=(0 "SUCCESS!")
+	RETURN_ARCH=(0 "SUCCESS!")
 	#RETURN_ARCH=(1 "FAIL!")
-	#return 1
+	return 1
 }
 
 # installer_debian ...
@@ -118,11 +126,9 @@ installer_red_hat() {
 
 # run_installer ... figures out which installer to run based on the OS and runs it
 run_installer() {
-	# Setup return array
-	local -n RETURN_INSTALLER_FINAL=$1
-	# To get array returns
+	# Setup return arrays
 	local RETURN_OPERATING_SYSTEM
-	local RETURN_INSTALLER
+	local -n RETURN_INSTALLER=$1 # The caller will passing thier own local array here to tap in to final installer array
 
 	# GET OS
 	get_OS RETURN_OPERATING_SYSTEM
@@ -169,9 +175,6 @@ run_installer() {
 
 	# Parse as array
 	declare -a RETURN_INSTALLER
-
-	# Set to final retunr array
-	RETURN_INSTALLER_FINAL=$RETURN_INSTALLER
 	return 0
 }
 
@@ -189,86 +192,130 @@ run_clamav_scan() {
 	clamscan --exclude-dir=/proc/* --exclude-dir=/sys/* -i -r --bell / >> "$CLAMAV_RESULTS_FILE"
 }
 
-# check_clam_av_infected_files ....
-check_clam_av_infected_files() {
+# run_check_clam_av_scan_results ....
+run_check_clam_av_scan_results() {
+	# Setup return array
+	local -n RETURN_CLAMAV_RESULTS_CHECK=$1
+
+	# Makesure we even have a results file
+	RESULTS_FILE_EXISTS=$(file_exists $CLAMAV_RESULTS_FILE)
+	if [[ $RESULTS_FILE_EXISTS == "false" ]]; then
+		RETURN_CLAMAV_RESULTS_CHECK=(1 "There is no clamav scan results file. Please run the clamav scan using ./check.sh --clamav-scan")
+		return 0
+	fi
+
+
+	### -- PARSE INFECTED FILES FROM SCAN RESULTS -- ###
 	# `BEGIN{FS=":"}`                   # Use the colon as a field separator
 	# `tolower($1) == "infected files"` # convert field 1 to lowercase, then look for a field called "infected files"
 	# `{print $2;}`                     # print the second field
-	awk 'BEGIN{FS=":"} tolower($1) == "infected files" {print $2;}' results.txt
+	INFECTED_FILES=$(awk 'BEGIN{FS=":"} tolower($1) == "infected files" {print $2;}' "$CLAMAV_RESULTS_FILE")
+
+	# We found infected files
+	if [[ $INFECTED_FILES -gt 0 ]]; then
+		RETURN_CLAMAV_RESULTS_CHECK=(1 "$INFECTED_FILES Infected Files have been found. Test Failed!")
+		return 0
+	fi
+
+	# We good
+	RETURN_CLAMAV_RESULTS_CHECK=(0 "No infected files have been found. Test Success!")
 }
 
 # What are we running??
 RUN_HELPER=0
 RUN_INSTALLER=0
 RUN_CLAM_AV_SCAN=0
-CHECK_CLAM_AV_SCAN_RESULTS=0
+RUN_CLAM_AV_SCAN_IN_SCREEN=0
+RUN_CHECK_CLAM_AV_SCAN_RESULTS=0
 
 # Figure out what we're running based off the flags
-while test $# -gt 0; do
-	case "$1" in
 
-		# Run the helper
-		"-i" | "--help")
-			RUN_HELPER=1
-		;;
+case "$1" in
 
-		# Run the installer
-		"-i" | "--install")
-			RUN_INSTALLER=1
-		;;
+	# Run the helper
+	"-h" | "--help")
+		RUN_HELPER=1
+	;;
 
-		# Run the clamav scanner
-		"-c" | "--clamav-scan")
-			RUN_CLAM_AV_SCAN=1
-		;;
+	# Run the installer
+	"-i" | "--install")
+		RUN_INSTALLER=1
+	;;
 
-		# Check clamav scan results
-		"-C" | "--clamav-check")
-			CHECK_CLAM_AV_SCAN_RESULTS=1
-		;;
+	# Run the clamav scanner
+	"-c" | "--clamav-scan")
+		RUN_CLAM_AV_SCAN=1
+	;;
 
-		# Nothing to do?
-		*)
-			echo "Please add the flag of what you want to do. See --help for more options"
-			exit 1
-		;;
+	# Run the clamav scanner
+	"-S" | "--clamav-scan-in-screen")
+		RUN_CLAM_AV_SCAN_IN_SCREEN=1
+	;;
 
-	esac
-done
+	# Check clamav scan results
+	"-C" | "--clamav-check")
+		RUN_CHECK_CLAM_AV_SCAN_RESULTS=1
+	;;
 
-# WANTS TO RUN HELPER
-if [[ $RUN_HELPER -gt 0 ]]; then
-	echo "$WHAT_ARE_WE_CALLING_THIS [options]"
-	echo " "
-	echo "options:"
-	echo "-h, --help                shows the options (you're on this right now)"
-	echo "-i, --install             installs the required packages (screen, clamav, etc)"
-	echo "-c, --clamav-scan         runs the clamav scanner"
-	echo "-C, --clamav-check        checks the clamav infected file results"
-	exit 0
-fi
+	# Nothing to do?
+	*)
+		echo "Please add the flag of what you want to do. See --help for more options"
+		exit 1
+	;;
 
-# WANTS TO RUN THE INSTALLER
-if [[ $RUN_INSTALLER -gt 0 ]]; then
-	# Run Installer
-	local INSTALLER
-	run_installer INSTALLER
-	declare -a INSTALLER
+esac
 
-	# Handle based on return
-	echo "${INSTALLER[1]}"
-	exit ${INSTALLER[0]}
-fi
+# main ...
+main() {
+	# WANTS TO RUN HELPER
+	if [[ $RUN_HELPER -gt 0 ]]; then
+		echo "$WHAT_ARE_WE_CALLING_THIS"
+		echo " "
+		echo "options:"
+		echo "-h, --help                          shows the options (you're on this right now)"
+		echo "-i, --install                       installs the required packages (screen, clamav, etc)"
+		echo "-c, --clamav-scan                   runs the clamav scanner"
+		echo "-S, --clamav-scan-in-screen         runs the clamav scanner in a screen called $CLAMAV_SCREEN_NAME"
+		echo "-C, --clamav-check                  checks the clamav results file [$CLAMAV_RESULTS_FILE] for infected files"
+		exit 0
+	fi
 
-# WANTS TO RUN CLAMAV SCAN
-if [[ $RUN_CLAM_AV_SCAN -gt 0 ]]; then
-	# Run the scan in a screen so we can come back to it later
-	# Adding `exec sh` will prevent the screen session from ending after script is done i.e) screen -dm bash -c 'sleep 5; exec sh'
-	screen -S "$CLAMAV_SCREEN_NAME" -dm bash -c "./check.sh --clamav-scan"
-	exit 0
-fi
+	# WANTS TO RUN THE INSTALLER
+	if [[ $RUN_INSTALLER -gt 0 ]]; then
+		# Run Installer
+		local INSTALLER
+		run_installer INSTALLER
+		declare -a INSTALLER
 
-# WANTS TO CHECK THE CLAM AV RESULTS
+		# Handle based on return
+		echo "${INSTALLER[1]}"
+		exit ${INSTALLER[0]}
+	fi
 
+	# WANTS TO RUN CLAMAV SCAN
+	if [[ $RUN_CLAM_AV_SCAN -gt 0 ]]; then
+		run_clamav_scan
+		exit 0
+	fi
 
+	# WANTS TO RUN CLAMAV SCAN IN SCREEN
+	if [[ $RUN_CLAM_AV_SCAN_IN_SCREEN -gt 0 ]]; then
+		# Run the scan in a screen so we can come back to it later
+		# Note: If you dont want the screen session to end when done executing, adding `exec sh` will prevent the screen session from ending after script is done i.e) screen -dm bash -c 'sleep 5; exec sh'
+		screen -S "$CLAMAV_SCREEN_NAME" -dm bash -c "./check.sh --clamav-scan"
+		exit 0
+	fi
 
+	# WANTS TO CHECK THE CLAM AV RESULTS
+	if [[ $RUN_CHECK_CLAM_AV_SCAN_RESULTS -gt 0 ]]; then
+		local CHECK_CLAM_AV_SCAN_RESULTS
+		run_check_clam_av_scan_results CHECK_CLAM_AV_SCAN_RESULTS
+		declare -a CHECK_CLAM_AV_SCAN_RESULTS
+		# Handle based on return
+		echo "${CHECK_CLAM_AV_SCAN_RESULTS[1]}"
+		exit ${CHECK_CLAM_AV_SCAN_RESULTS[0]}
+	fi
+}
+
+# Run main function
+main
